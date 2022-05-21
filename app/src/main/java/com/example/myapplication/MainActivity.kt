@@ -55,7 +55,7 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
     init {
 
         // Create an OpenGL ES 2.0 context
-        setEGLContextClientVersion(2)
+        setEGLContextClientVersion(3)
 
         renderer = MyGLRenderer()
 
@@ -92,12 +92,6 @@ class MyGLRenderer : GLSurfaceView.Renderer {
     }
 
     override fun onDrawFrame(unused: GL10) {
-        // Set the camera position (View matrix)
-        Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 3f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
-
-        // Calculate the projection and view transformation
-        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
-
         // Redraw background color
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         mTriangle.draw(vPMatrix)
@@ -106,13 +100,10 @@ class MyGLRenderer : GLSurfaceView.Renderer {
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
         GLES30.glViewport(0, 0, width, height)
 
-
         val ratio: Float = width.toFloat() / height.toFloat()
-
-        // this projection matrix is applied to object coordinates
-        // in the onDrawFrame() method
         Matrix.frustumM(projectionMatrix, 0, -ratio, ratio, -1f, 1f, 3f, 7f)
-
+        Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 3f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
+        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
     }
 
     
@@ -120,17 +111,25 @@ class MyGLRenderer : GLSurfaceView.Renderer {
 }
 
 
-fun loadShader(type: Int, shaderCode: String): Int {
+fun loadShader(vertexCode: String, fragmentCode: String): Int {
+    val vertex = GLES30.glCreateShader(GLES30.GL_VERTEX_SHADER)
+    val fragment = GLES30.glCreateShader(GLES30.GL_FRAGMENT_SHADER)
 
-    // create a vertex shader type (GLES30.GL_VERTEX_SHADER)
-    // or a fragment shader type (GLES30.GL_FRAGMENT_SHADER)
-    return GLES30.glCreateShader(type).also { shader ->
+    GLES30.glShaderSource(vertex, vertexCode)
+    GLES30.glCompileShader(vertex)
+    GLES30.glShaderSource(fragment, fragmentCode)
+    GLES30.glCompileShader(fragment)
 
-        // add the source code to the shader and compile it
-        GLES30.glShaderSource(shader, shaderCode)
-        GLES30.glCompileShader(shader)
-    }
+    val shader = GLES30.glCreateProgram()
+
+    GLES30.glAttachShader(shader, vertex)
+    GLES30.glAttachShader(shader, fragment)
+    GLES30.glLinkProgram(shader)
+
+    return shader
 }
+
+
 
 
 // number of coordinates per vertex in this array
@@ -141,18 +140,22 @@ var triangleCoords = floatArrayOf(     // in counterclockwise order:
     0.5f, -0.311004243f, 0.0f      // bottom right
 )
 
+var triangleColors = floatArrayOf(
+    1.0f, 0.0f, 0.0f, 1.0f,
+    0.0f, 1.0f, 0.0f, 1.0f,
+    0.0f, 0.0f, 1.0f, 1.0f,
+)
+
 class Triangle {
 
     private val vertexShaderCode =
-    // This matrix member variable provides a hook to manipulate
-        // the coordinates of the objects that use this vertex shader
         "uniform mat4 uMVPMatrix;" +
                 "attribute vec4 vPosition;" +
+                "attribute vec4 veColor;" +
+                "varying vec4 vertColor;" +
                 "void main() {" +
-                // the matrix must be included as a modifier of gl_Position
-                // Note that the uMVPMatrix factor *must be first* in order
-                // for the matrix multiplication product to be correct.
                 "  gl_Position = uMVPMatrix * vPosition;" +
+                "  vertColor = veColor;" +
                 "}"
 
     // Use to access and set the view transformation
@@ -162,97 +165,110 @@ class Triangle {
     private val fragmentShaderCode =
         "precision mediump float;" +
                 "uniform vec4 vColor;" +
+                "varying vec4 vertColor;" +
                 "void main() {" +
-                "  gl_FragColor = vColor;" +
+                "  gl_FragColor = vertColor;" +
                 "}"
 
 
     // Set color with red, green, blue and alpha (opacity) values
-    val color = floatArrayOf(0.63671875f, 0.76953125f, 0.22265625f, 1.0f)
+    val color = floatArrayOf(1.0f, 1.0f, 0.0f, 1.0f)
 
-    private var vertexBuffer: FloatBuffer =
-        // (number of coordinate values * 4 bytes per float)
-        ByteBuffer.allocateDirect(triangleCoords.size * 4).run {
-            // use the device hardware's native byte order
-            order(ByteOrder.nativeOrder())
 
-            // create a floating point buffer from the ByteBuffer
-            asFloatBuffer().apply {
-                // add the coordinates to the FloatBuffer
-                put(triangleCoords)
-                // set the buffer to read the first coordinate
-                position(0)
-            }
-        }
 
-    private var mProgram: Int
 
-    init {
-
-        val vertexShader: Int = loadShader(GLES30.GL_VERTEX_SHADER, vertexShaderCode)
-        val fragmentShader: Int = loadShader(GLES30.GL_FRAGMENT_SHADER, fragmentShaderCode)
-
-        // create empty OpenGL ES Program
-        mProgram = GLES30.glCreateProgram().also {
-
-            // add the vertex shader to program
-            GLES30.glAttachShader(it, vertexShader)
-
-            // add the fragment shader to program
-            GLES30.glAttachShader(it, fragmentShader)
-
-            // creates OpenGL ES program executables
-            GLES30.glLinkProgram(it)
-        }
-
-    }
+    private var mProgram: Int = loadShader(vertexShaderCode, fragmentShaderCode)
 
     var positionHandle: Int = 0
+    var colorHandle: Int = 0
     var mColorHandle: Int = 0
 
     val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
     val vertexStride: Int = COORDS_PER_VERTEX * 4 // 4 bytes per vertex
+    val colorVertexStride: Int = 4 * 4 // 4 bytes per vertex
 
     fun draw(mvpMatrix: FloatArray) {
+        var vertexBuffer: FloatBuffer =
+            // (number of coordinate values * 4 bytes per float)
+            ByteBuffer.allocateDirect(triangleCoords.size * 4).run {
+                // use the device hardware's native byte order
+                order(ByteOrder.nativeOrder())
+
+                // create a floating point buffer from the ByteBuffer
+                asFloatBuffer().apply {
+                    // add the coordinates to the FloatBuffer
+                    put(triangleCoords)
+                    // set the buffer to read the first coordinate
+                    position(0)
+                }
+            }
+
+        var vertexColorBuffer: FloatBuffer =
+            // (number of coordinate values * 4 bytes per float)
+            ByteBuffer.allocateDirect(triangleColors.size * 4).run {
+                // use the device hardware's native byte order
+                order(ByteOrder.nativeOrder())
+
+                // create a floating point buffer from the ByteBuffer
+                asFloatBuffer().apply {
+                    // add the coordinates to the FloatBuffer
+                    put(triangleColors)
+                    // set the buffer to read the first coordinate
+                    position(0)
+                }
+            }
+
+
+
+
         // Add program to OpenGL ES environment
         GLES30.glUseProgram(mProgram)
 
-        // get handle to vertex shader's vPosition member
-        positionHandle = GLES30.glGetAttribLocation(mProgram, "vPosition").also {
+        positionHandle = GLES30.glGetAttribLocation(mProgram, "vPosition")
+        GLES30.glEnableVertexAttribArray(positionHandle)
+        GLES30.glVertexAttribPointer(
+            positionHandle,
+            COORDS_PER_VERTEX,
+            GLES30.GL_FLOAT,
+            false,
+            vertexStride,
+            vertexBuffer
+        )
 
-            // Enable a handle to the triangle vertices
-            GLES30.glEnableVertexAttribArray(it)
-
-            // Prepare the triangle coordinate data
-            GLES30.glVertexAttribPointer(
-                it,
-                COORDS_PER_VERTEX,
-                GLES30.GL_FLOAT,
-                false,
-                vertexStride,
-                vertexBuffer
-            )
-
-            // get handle to fragment shader's vColor member
-            mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
-
-                // Set color for drawing the triangle
-                GLES30.glUniform4fv(colorHandle, 1, color, 0)
-            }
-
-            // get handle to shape's transformation matrix
-            vPMatrixHandle = GLES30.glGetUniformLocation(mProgram, "uMVPMatrix")
-
-            // Pass the projection and view transformation to the shader
-            GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+        colorHandle = GLES30.glGetAttribLocation(mProgram, "veColor")
+        GLES30.glEnableVertexAttribArray(colorHandle)
+        GLES30.glVertexAttribPointer(
+            colorHandle,
+            4, // krāsas kā 4 komponenšu vektors
+            GLES30.GL_FLOAT,
+            false,
+            colorVertexStride,
+            vertexColorBuffer
+        )
 
 
-            // Draw the triangle
-            GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
 
-            // Disable vertex array
-            GLES30.glDisableVertexAttribArray(it)
+        // get handle to fragment shader's vColor member
+        mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
+
+            // Set color for drawing the triangle
+            GLES30.glUniform4fv(colorHandle, 1, color, 0)
         }
+
+        // get handle to shape's transformation matrix
+        vPMatrixHandle = GLES30.glGetUniformLocation(mProgram, "uMVPMatrix")
+
+        // Pass the projection and view transformation to the shader
+        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+
+
+        // Draw the triangle
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
+
+        // Disable vertex array
+        GLES30.glDisableVertexAttribArray(colorHandle)
+        GLES30.glDisableVertexAttribArray(positionHandle)
+
     }
 
 
