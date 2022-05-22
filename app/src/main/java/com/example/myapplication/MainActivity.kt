@@ -7,6 +7,8 @@ import android.content.Context
 import android.opengl.GLES30
 import android.opengl.Matrix
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -14,10 +16,13 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.view.GestureDetectorCompat
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
+import kotlin.math.abs
+import kotlin.math.absoluteValue
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -48,11 +53,15 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
+private const val DEBUG_TAG = "Gestures"
 
 
-class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
+class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener {
 
     private val renderer: MyGLRenderer
+
+    private lateinit var mDetector: GestureDetectorCompat
+
 
     init {
 
@@ -65,7 +74,104 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context) {
         setRenderer(renderer)
 
         renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
+
+
+
+
+        mDetector = GestureDetectorCompat(context, this)
+        mDetector.setOnDoubleTapListener(this)
+
     }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        return if (mDetector.onTouchEvent(e)) {
+            true
+        } else {
+            super.onTouchEvent(e)
+        }
+    }
+
+    override fun onDown(event: MotionEvent): Boolean {
+        Log.d(DEBUG_TAG, "onDown: $event")
+        return true
+    }
+
+    override fun onFling(
+        event1: MotionEvent,
+        event2: MotionEvent,
+        velocityX: Float,
+        velocityY: Float
+    ): Boolean {
+        //Log.d(DEBUG_TAG, "onFling: $event1 $event2")
+        //Log.d("FLING", "FLINGAA: $velocityX $velocityY")
+        if(abs(velocityX) > 5000 || abs(velocityY) > 5000) {
+            if(abs(velocityX) > abs(velocityY)){
+                if(velocityX > 0){
+                    Log.d("FLING", "right")
+                    // right
+                    Triangle.Tetromino.rotationX += 1
+                    if (Triangle.Tetromino.rotationX > 3) Triangle.Tetromino.rotationX = 0
+                    requestRender()
+                } else {
+                    Log.d("FLING", "left")
+                    // left
+                    Triangle.Tetromino.rotationX -= 1
+                    if (Triangle.Tetromino.rotationX < 0) Triangle.Tetromino.rotationX = 3
+                    requestRender()
+                }
+            } else {
+                if(velocityY > 0){
+                    Log.d("FLING", "down")
+                    // down
+                } else {
+                    Log.d("FLING", "up")
+                    // up
+                }
+            }
+        }
+        return true
+    }
+
+    override fun onLongPress(event: MotionEvent) {
+        Log.d(DEBUG_TAG, "onLongPress: $event")
+    }
+
+    override fun onScroll(
+        event1: MotionEvent,
+        event2: MotionEvent,
+        distanceX: Float,
+        distanceY: Float
+    ): Boolean {
+        //Log.d(DEBUG_TAG, "onScroll: $event1 $event2")
+        return true
+    }
+
+    override fun onShowPress(event: MotionEvent) {
+        Log.d(DEBUG_TAG, "onShowPress: $event")
+    }
+
+    override fun onSingleTapUp(event: MotionEvent): Boolean {
+        Log.d(DEBUG_TAG, "onSingleTapUp: $event")
+        return true
+    }
+
+    override fun onDoubleTap(event: MotionEvent): Boolean {
+        Log.d(DEBUG_TAG, "onDoubleTap: $event")
+        return true
+    }
+
+    override fun onDoubleTapEvent(event: MotionEvent): Boolean {
+        Log.d(DEBUG_TAG, "onDoubleTapEvent: $event")
+        return true
+    }
+
+    override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
+        Log.d(DEBUG_TAG, "onSingleTapConfirmed: $event")
+        return true
+    }
+
+
+
 }
 
 class MyGLRenderer : GLSurfaceView.Renderer {
@@ -126,14 +232,17 @@ fun loadShader(vertexCode: String, fragmentCode: String): Int {
 
     GLES30.glShaderSource(vertex, vertexCode)
     GLES30.glCompileShader(vertex)
+    Log.d("SHH", GLES30.glGetProgramInfoLog(vertex))
     GLES30.glShaderSource(fragment, fragmentCode)
     GLES30.glCompileShader(fragment)
+    Log.d("SHH", GLES30.glGetProgramInfoLog(fragment))
 
     val shader = GLES30.glCreateProgram()
 
     GLES30.glAttachShader(shader, vertex)
     GLES30.glAttachShader(shader, fragment)
     GLES30.glLinkProgram(shader)
+    Log.d("SHH", GLES30.glGetProgramInfoLog(shader))
 
     return shader
 }
@@ -201,7 +310,7 @@ class Triangle {
             for (i in 0 until width)
             for (j in 0 until length)
             for (k in 0 until depth){
-                Log.d("AAA", "Checking $i $j $k")
+                //Log.d("AAA", "Checking $i $j $k")
                 if(field[i][j][k]){
                     Log.d("AAA", "Found $i $j $k")
                     val c_left: Float = cornerX + (fieldUnit * i.toFloat())
@@ -269,6 +378,98 @@ class Triangle {
         }
     }
 
+    object Tetromino {
+        data class TetrominoSegment(val x: Int, val y: Int){
+            val transfX
+                get() = locationX + when(rotationX){
+                    0 -> x
+                    1 -> y
+                    2 -> -x
+                    else -> -y
+                }
+            val transfY
+                get() = locationY + when(rotationX){
+                    0 -> y
+                    1 -> x
+                    2 -> -y
+                    else -> -x
+                }
+            val transfZ
+                get() = locationZ
+        }
+        val TetrominoType = listOf(
+            listOf(
+                TetrominoSegment(0, 0),
+                TetrominoSegment(1, 0),
+                TetrominoSegment(-1, 0),
+                TetrominoSegment(1, 1)
+            )
+        )
+
+        var current = TetrominoType[0]
+        var rotationX: Int = 0
+        var rotationY: Int = 0
+        var locationX: Int = 2
+        var locationY: Int = 2
+        var locationZ: Int = 4
+
+        lateinit var vertices: FloatArray
+
+        fun assembleVertexArrays() {
+            Log.d("AAA", "Assembling tetromino vertices")
+            var verts: MutableList<Float> = mutableListOf()
+
+            for (t in current){
+                val c_left: Float = Field.cornerX + (Field.fieldUnit * t.transfX.toFloat())
+                val c_right: Float = Field.cornerX + (Field.fieldUnit * (t.transfX+1).toFloat())
+                val c_lower: Float = Field.cornerY + (Field.fieldUnit * t.transfY.toFloat())
+                val c_upper: Float = Field.cornerY + (Field.fieldUnit * (t.transfY+1).toFloat())
+                val c_bottom: Float = Field.cornerZ + (Field.fieldUnit * t.transfZ.toFloat())
+                val c_top: Float = Field.cornerZ + (Field.fieldUnit * (t.transfZ+1).toFloat())
+                val tlf = {verts.add(c_left); verts.add(c_upper); verts.add(c_top)}
+                val trf = {verts.add(c_right); verts.add(c_upper); verts.add(c_top)}
+                val blf = {verts.add(c_left); verts.add(c_lower); verts.add(c_top)}
+                val brf = {verts.add(c_right); verts.add(c_lower); verts.add(c_top)}
+                val tlb = {verts.add(c_left); verts.add(c_upper); verts.add(c_bottom)}
+                val trb = {verts.add(c_right); verts.add(c_upper); verts.add(c_bottom)}
+                val blb = {verts.add(c_left); verts.add(c_lower); verts.add(c_bottom)}
+                val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom)}
+
+                tlf()
+                trf()
+                trf()
+                brf()
+                brf()
+                blf()
+                blf()
+                tlf()
+
+                tlb()
+                trb()
+                trb()
+                brb()
+                brb()
+                blb()
+                blb()
+                tlb()
+
+                tlf()
+                tlb()
+                trf()
+                trb()
+                brf()
+                brb()
+                blf()
+                blb()
+
+            }
+
+            Log.d("AAA", "Done assembling")
+            vertices = verts.toFloatArray()
+        }
+
+    }
+
     private val vertexShaderCode =
         "uniform mat4 uMVPMatrix;" +
                 "attribute vec4 vPosition;" +
@@ -279,10 +480,6 @@ class Triangle {
                 "  vertColor = veColor;" +
                 "}"
 
-    // Use to access and set the view transformation
-    private var vPMatrixHandle: Int = 0
-
-
     private val fragmentShaderCode =
         "precision mediump float;" +
                 "uniform vec4 vColor;" +
@@ -291,8 +488,23 @@ class Triangle {
                 "  gl_FragColor = vertColor;" +
                 "}"
 
+    private val lineVertexShaderCode =
+        "uniform mat4 uMVPMatrix;" +
+                "attribute vec4 vPosition;" +
+                "void main() {" +
+                "  gl_Position = uMVPMatrix * vPosition;" +
+                "}"
+
+    private val lineFragmentShaderCode =
+        "precision mediump float;" +
+                "uniform vec4 vColor;" +
+                "void main() {" +
+                "  gl_FragColor = vColor;" +
+                "}"
 
 
+    // Use to access and set the view transformation
+    private var vPMatrixHandle: Int = 0
 
 
 
@@ -304,6 +516,7 @@ class Triangle {
 
 
     private var mProgram: Int = loadShader(vertexShaderCode, fragmentShaderCode)
+    private var lineShader: Int = loadShader(lineVertexShaderCode, lineFragmentShaderCode)
 
     var positionHandle: Int = 0
     var colorHandle: Int = 0
@@ -316,37 +529,36 @@ class Triangle {
     fun draw(mvpMatrix: FloatArray) {
         Log.d("AAA", "Starting the draw")
         Field.assembleVertexArrays()
+        Tetromino.assembleVertexArrays()
+
         val triangles = Field.vertices
-        //val colors = FloatArray(triangles.size / 3 * 4) {1.0f}
         val colors = Field.colors
+        val lines = Tetromino.vertices
 
         Log.d("AAA", "Making buffers")
         var vertexBuffer: FloatBuffer =
-            // (number of coordinate values * 4 bytes per float)
             ByteBuffer.allocateDirect(triangles.size * 4).run {
-                // use the device hardware's native byte order
                 order(ByteOrder.nativeOrder())
-
-                // create a floating point buffer from the ByteBuffer
                 asFloatBuffer().apply {
-                    // add the coordinates to the FloatBuffer
                     put(triangles)
-                    // set the buffer to read the first coordinate
                     position(0)
                 }
             }
 
         var vertexColorBuffer: FloatBuffer =
-            // (number of coordinate values * 4 bytes per float)
             ByteBuffer.allocateDirect(colors.size * 4).run {
-                // use the device hardware's native byte order
                 order(ByteOrder.nativeOrder())
-
-                // create a floating point buffer from the ByteBuffer
                 asFloatBuffer().apply {
-                    // add the coordinates to the FloatBuffer
                     put(colors)
-                    // set the buffer to read the first coordinate
+                    position(0)
+                }
+            }
+
+        var lineVertexBuffer: FloatBuffer =
+            ByteBuffer.allocateDirect(lines.size * 4).run {
+                order(ByteOrder.nativeOrder())
+                asFloatBuffer().apply {
+                    put(lines)
                     position(0)
                 }
             }
@@ -354,7 +566,6 @@ class Triangle {
         Log.d("AAA", "Done making buffers")
 
 
-        // Add program to OpenGL ES environment
         GLES30.glUseProgram(mProgram)
 
         positionHandle = GLES30.glGetAttribLocation(mProgram, "vPosition")
@@ -380,26 +591,46 @@ class Triangle {
         )
 
 
-
-        // get handle to fragment shader's vColor member
         mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
-
-            // Set color for drawing the triangle
             GLES30.glUniform4fv(colorHandle, 1, color, 0)
         }
 
-        // get handle to shape's transformation matrix
         vPMatrixHandle = GLES30.glGetUniformLocation(mProgram, "uMVPMatrix")
-
-        // Pass the projection and view transformation to the shader
         GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
 
-
-        // Draw the triangle
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, triangles.size / 3)
 
-        // Disable vertex array
         GLES30.glDisableVertexAttribArray(colorHandle)
+        GLES30.glDisableVertexAttribArray(positionHandle)
+
+
+
+
+
+
+
+        GLES30.glUseProgram(lineShader)
+
+        positionHandle = GLES30.glGetAttribLocation(lineShader, "vPosition")
+        GLES30.glEnableVertexAttribArray(positionHandle)
+        GLES30.glVertexAttribPointer(
+            positionHandle,
+            COORDS_PER_VERTEX,
+            GLES30.GL_FLOAT,
+            false,
+            vertexStride,
+            lineVertexBuffer
+        )
+
+        mColorHandle = GLES30.glGetUniformLocation(lineShader, "vColor").also { colorHandle ->
+            GLES30.glUniform4fv(colorHandle, 1, color, 0)
+        }
+
+        vPMatrixHandle = GLES30.glGetUniformLocation(lineShader, "uMVPMatrix")
+        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+
+        GLES30.glDrawArrays(GLES30.GL_LINES, 0, lines.size / 3)
+
         GLES30.glDisableVertexAttribArray(positionHandle)
 
     }
