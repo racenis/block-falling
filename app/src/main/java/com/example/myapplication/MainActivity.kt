@@ -18,6 +18,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.ShortBuffer
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     private lateinit var gLView: GLSurfaceView
@@ -26,6 +27,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         //setContentView(R.layout.activity_main)
 
+        Log.d("AAA", "Starting")
         gLView = MyGLSurfaceView(this)
         setContentView(gLView)
 
@@ -81,6 +83,12 @@ class MyGLRenderer : GLSurfaceView.Renderer {
         // Set the background frame color
         GLES30.glClearColor(0.0f, 1.0f, 0.0f, 1.0f)
 
+        GLES30.glEnable( GLES30.GL_DEPTH_TEST );
+        GLES30.glDepthFunc( GLES30.GL_LEQUAL );
+        GLES30.glDepthMask( true );
+
+        GLES30.glEnable(GLES30.GL_CULL_FACE)
+
         // initialize a triangle
         mTriangle = Triangle()
         // initialize a square
@@ -93,7 +101,8 @@ class MyGLRenderer : GLSurfaceView.Renderer {
 
     override fun onDrawFrame(unused: GL10) {
         // Redraw background color
-        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+
         mTriangle.draw(vPMatrix)
     }
 
@@ -148,6 +157,118 @@ var triangleColors = floatArrayOf(
 
 class Triangle {
 
+    object Field {
+        val width: Int = 5
+        val length: Int = 5
+        val depth: Int = 7
+        val fieldUnit: Float  = 0.15f
+        val cornerX: Float  = 0.0f - ((fieldUnit * width.toFloat()) / 2.0f)
+        val cornerY: Float  = 0.0f - ((fieldUnit * length.toFloat()) / 2.0f)
+        val cornerZ: Float  = -1.0f
+        var field = Array(width) { Array(length) { BooleanArray(depth) { false } } }
+
+        init {
+            field[0][0][0] = true
+            field[4][0][0] = true
+            field[0][4][0] = true
+            field[4][4][0] = true
+
+            field[0][0][1] = true
+            field[4][0][1] = true
+            field[0][4][1] = true
+            field[4][4][1] = true
+
+            field[0][0][2] = true
+            field[4][0][2] = true
+            field[0][4][2] = true
+            field[4][4][2] = true
+
+
+
+
+            field[2][2][0] = true
+        }
+
+        lateinit var vertices: FloatArray
+        lateinit var colors: FloatArray
+        lateinit var textures: FloatArray
+
+        fun assembleVertexArrays() {
+            Log.d("AAA", "Assembling field vertices")
+            var verts: MutableList<Float> = mutableListOf()
+            var colrs: MutableList<Float> = mutableListOf()
+
+            for (i in 0 until width)
+            for (j in 0 until length)
+            for (k in 0 until depth){
+                Log.d("AAA", "Checking $i $j $k")
+                if(field[i][j][k]){
+                    Log.d("AAA", "Found $i $j $k")
+                    val c_left: Float = cornerX + (fieldUnit * i.toFloat())
+                    val c_right: Float = cornerX + (fieldUnit * (i+1).toFloat())
+                    val c_lower: Float = cornerY + (fieldUnit * j.toFloat())
+                    val c_upper: Float = cornerY + (fieldUnit * (j+1).toFloat())
+                    val c_bottom: Float = cornerZ + (fieldUnit * k.toFloat())
+                    val c_top: Float = cornerZ + (fieldUnit * (k+1).toFloat())
+                    val col = {colrs.add(Random.nextFloat()); colrs.add(Random.nextFloat()); colrs.add(Random.nextFloat()); colrs.add(1.0f)}
+                    val tlf = {verts.add(c_left); verts.add(c_upper); verts.add(c_top); col()}
+                    val trf = {verts.add(c_right); verts.add(c_upper); verts.add(c_top); col()}
+                    val blf = {verts.add(c_left); verts.add(c_lower); verts.add(c_top); col()}
+                    val brf = {verts.add(c_right); verts.add(c_lower); verts.add(c_top); col()}
+                    val tlb = {verts.add(c_left); verts.add(c_upper); verts.add(c_bottom); col()}
+                    val trb = {verts.add(c_right); verts.add(c_upper); verts.add(c_bottom); col()}
+                    val blb = {verts.add(c_left); verts.add(c_lower); verts.add(c_bottom); col()}
+                    val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom); col()}
+
+                    // virsējais
+                    tlf()
+                    blf()
+                    brf()
+                    brf()
+                    trf()
+                    tlf()
+
+                    // augšējais
+                    trf()
+                    trb()
+                    tlb()
+                    tlb()
+                    tlf()
+                    trf()
+
+                    // apakšējais
+
+                    brf()
+                    blf()
+                    blb()
+                    blb()
+                    brb()
+                    brf()
+
+                    // kreisais
+                    tlf()
+                    tlb()
+                    blb()
+                    blb()
+                    blf()
+                    tlf()
+
+                    // labais
+                    trf()
+                    brf()
+                    brb()
+                    brb()
+                    trb()
+                    trf()
+                }
+            }
+
+            Log.d("AAA", "Done assembling")
+            vertices = verts.toFloatArray()
+            colors = colrs.toFloatArray()
+        }
+    }
+
     private val vertexShaderCode =
         "uniform mat4 uMVPMatrix;" +
                 "attribute vec4 vPosition;" +
@@ -171,6 +292,11 @@ class Triangle {
                 "}"
 
 
+
+
+
+
+
     // Set color with red, green, blue and alpha (opacity) values
     val color = floatArrayOf(1.0f, 1.0f, 0.0f, 1.0f)
 
@@ -188,16 +314,23 @@ class Triangle {
     val colorVertexStride: Int = 4 * 4 // 4 bytes per vertex
 
     fun draw(mvpMatrix: FloatArray) {
+        Log.d("AAA", "Starting the draw")
+        Field.assembleVertexArrays()
+        val triangles = Field.vertices
+        //val colors = FloatArray(triangles.size / 3 * 4) {1.0f}
+        val colors = Field.colors
+
+        Log.d("AAA", "Making buffers")
         var vertexBuffer: FloatBuffer =
             // (number of coordinate values * 4 bytes per float)
-            ByteBuffer.allocateDirect(triangleCoords.size * 4).run {
+            ByteBuffer.allocateDirect(triangles.size * 4).run {
                 // use the device hardware's native byte order
                 order(ByteOrder.nativeOrder())
 
                 // create a floating point buffer from the ByteBuffer
                 asFloatBuffer().apply {
                     // add the coordinates to the FloatBuffer
-                    put(triangleCoords)
+                    put(triangles)
                     // set the buffer to read the first coordinate
                     position(0)
                 }
@@ -205,20 +338,20 @@ class Triangle {
 
         var vertexColorBuffer: FloatBuffer =
             // (number of coordinate values * 4 bytes per float)
-            ByteBuffer.allocateDirect(triangleColors.size * 4).run {
+            ByteBuffer.allocateDirect(colors.size * 4).run {
                 // use the device hardware's native byte order
                 order(ByteOrder.nativeOrder())
 
                 // create a floating point buffer from the ByteBuffer
                 asFloatBuffer().apply {
                     // add the coordinates to the FloatBuffer
-                    put(triangleColors)
+                    put(colors)
                     // set the buffer to read the first coordinate
                     position(0)
                 }
             }
 
-
+        Log.d("AAA", "Done making buffers")
 
 
         // Add program to OpenGL ES environment
@@ -263,7 +396,7 @@ class Triangle {
 
 
         // Draw the triangle
-        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, triangles.size / 3)
 
         // Disable vertex array
         GLES30.glDisableVertexAttribArray(colorHandle)
