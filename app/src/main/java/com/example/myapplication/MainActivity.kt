@@ -23,6 +23,7 @@ import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import kotlin.math.abs
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -62,6 +63,8 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
 
     private lateinit var mDetector: GestureDetectorCompat
 
+    private var dragged = false
+    private var dragging = 0
 
     init {
 
@@ -93,6 +96,8 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
 
     override fun onDown(event: MotionEvent): Boolean {
         Log.d(DEBUG_TAG, "onDown: $event")
+        dragging = 0
+        dragged = false
         return true
     }
 
@@ -109,23 +114,33 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
                 if(velocityX > 0){
                     Log.d("FLING", "right")
                     // right
-                    Triangle.Tetromino.rotationX += 1
-                    if (Triangle.Tetromino.rotationX > 3) Triangle.Tetromino.rotationX = 0
+                    //Triangle.Tetromino.rotationX += 1
+                    //if (Triangle.Tetromino.rotationX > 3) Triangle.Tetromino.rotationX = 0
+                    Triangle.Tetromino.rotateRight()
                     requestRender()
                 } else {
                     Log.d("FLING", "left")
                     // left
-                    Triangle.Tetromino.rotationX -= 1
-                    if (Triangle.Tetromino.rotationX < 0) Triangle.Tetromino.rotationX = 3
+                    Triangle.Tetromino.rotateLeft()
+                    //Triangle.Tetromino.rotationX -= 1
+                    //if (Triangle.Tetromino.rotationX < 0) Triangle.Tetromino.rotationX = 3
                     requestRender()
                 }
             } else {
                 if(velocityY > 0){
                     Log.d("FLING", "down")
                     // down
+                    Triangle.Tetromino.rotateDown()
+                    //Triangle.Tetromino.rotationY += 1
+                    //if (Triangle.Tetromino.rotationY > 3) Triangle.Tetromino.rotationY = 0
+                    requestRender()
                 } else {
                     Log.d("FLING", "up")
                     // up
+                    Triangle.Tetromino.rotateUp()
+                    //Triangle.Tetromino.rotationY -= 1
+                    //if (Triangle.Tetromino.rotationY < 0) Triangle.Tetromino.rotationY = 3
+                    requestRender()
                 }
             }
         }
@@ -143,6 +158,31 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
         distanceY: Float
     ): Boolean {
         //Log.d(DEBUG_TAG, "onScroll: $event1 $event2")
+        Log.d(DEBUG_TAG, "onScroll: $dragging")
+        dragging++
+        if (/*!dragged &&*/ (dragging > 10) && (abs(distanceX) > 2 || abs(distanceY) > 2)) {
+            Log.d(DEBUG_TAG, "OYOYOYOYOYOYOOOOYOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
+            dragged = true
+            dragging = -10
+            if (abs(distanceX) > abs(distanceY)) {
+                if (distanceX > 0) {
+                    Triangle.Tetromino.locationX--
+                    requestRender()
+                } else {
+                    Triangle.Tetromino.locationX++
+                    requestRender()
+                }
+            } else {
+                if (distanceY > 0) {
+                    Triangle.Tetromino.locationY++
+                    requestRender()
+                } else {
+                    Triangle.Tetromino.locationY--
+                    requestRender()
+                }
+            }
+        }
+        //Log.d(DEBUG_TAG, "onScroll: $distanceX $distanceY")
         return true
     }
 
@@ -380,22 +420,98 @@ class Triangle {
 
     object Tetromino {
         data class TetrominoSegment(val x: Int, val y: Int){
+            var rotated = FloatArray(4)
+            fun applyRotation(matrix: FloatArray){
+                val r = FloatArray(4)
+                r[0] = x.toFloat()
+                r[1] = y.toFloat()
+                r[2] = 0.0f
+                r[3] = 1.0f
+
+                Matrix.multiplyMV(rotated, 0, matrix, 0, r, 0)
+            }
+
             val transfX
-                get() = locationX + when(rotationX){
-                    0 -> x
-                    1 -> y
-                    2 -> -x
-                    else -> -y
+                get() = locationX + rotated[0].roundToInt()
+
+            val transfY
+                get() = locationY + rotated[1].roundToInt()
+
+            val transfZ
+                get() = locationZ + rotated[2].roundToInt()
+
+            /*
+            val transfX
+                get() = locationX + when(Pair(rotationX, rotationY)){
+                    Pair(0, 0) -> x
+                    Pair(1, 0) -> y
+                    Pair(2, 0) -> -x
+                    Pair(3, 0) -> -y
+
+                    Pair(0, 1) -> x
+                    Pair(1, 1) -> y
+                    Pair(2, 1) -> -x
+                    Pair(3, 1) -> -y
+
+                    Pair(0, 2) -> x
+                    Pair(1, 2) -> y
+                    Pair(2, 2) -> -x
+                    Pair(3, 2) -> -y
+
+                    Pair(0, 3) -> x
+                    Pair(1, 3) -> y
+                    Pair(2, 3) -> -x
+                    Pair(3, 3) -> -y
+
+                    else -> x
                 }
             val transfY
-                get() = locationY + when(rotationX){
-                    0 -> y
-                    1 -> x
-                    2 -> -y
-                    else -> -x
+                get() = locationY + when(Pair(rotationX, rotationY)){
+                    Pair(0, 0) -> y
+                    Pair(1, 0) -> x
+                    Pair(2, 0) -> -y
+                    Pair(3, 0) -> -x
+
+                    Pair(0, 1) -> 0
+                    Pair(1, 1) -> 0
+                    Pair(2, 1) -> 0
+                    Pair(3, 1) -> 0
+
+                    Pair(0, 2) -> -y
+                    Pair(1, 2) -> -x
+                    Pair(2, 2) -> y
+                    Pair(3, 2) -> x
+
+                    Pair(0, 3) -> 0
+                    Pair(1, 3) -> 0
+                    Pair(2, 3) -> 0
+                    Pair(3, 3) -> 0
+                    else -> y
                 }
             val transfZ
-                get() = locationZ
+                get() = locationZ + when(Pair(rotationX, rotationY)){
+                    Pair(0, 0) -> 0
+                    Pair(1, 0) -> 0
+                    Pair(2, 0) -> 0
+                    Pair(3, 0) -> 0
+
+                    Pair(0, 1) -> y
+                    Pair(1, 1) -> x
+                    Pair(2, 1) -> -y
+                    Pair(3, 1) -> -x
+
+                    Pair(0, 2) -> 0
+                    Pair(1, 2) -> 0
+                    Pair(2, 2) -> 0
+                    Pair(3, 2) -> 0
+
+                    Pair(0, 3) -> -y
+                    Pair(1, 3) -> -x
+                    Pair(2, 3) -> y
+                    Pair(3, 3) -> x
+                    else -> 0
+                }
+             */
         }
         val TetrominoType = listOf(
             listOf(
@@ -413,6 +529,17 @@ class Triangle {
         var locationY: Int = 2
         var locationZ: Int = 4
 
+
+        var rotationMatrix = FloatArray(16)
+        init {
+            Matrix.setIdentityM(rotationMatrix, 0)
+        }
+
+        fun rotateUp() = Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 1.0f, 0.0f)
+        fun rotateDown() = Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 1.0f, 0.0f)
+        fun rotateLeft() = Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 0.0f, 1.0f)
+        fun rotateRight() = Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 0.0f, 1.0f)
+
         lateinit var vertices: FloatArray
 
         fun assembleVertexArrays() {
@@ -420,6 +547,8 @@ class Triangle {
             var verts: MutableList<Float> = mutableListOf()
 
             for (t in current){
+                t.applyRotation(rotationMatrix)
+
                 val c_left: Float = Field.cornerX + (Field.fieldUnit * t.transfX.toFloat())
                 val c_right: Float = Field.cornerX + (Field.fieldUnit * (t.transfX+1).toFloat())
                 val c_lower: Float = Field.cornerY + (Field.fieldUnit * t.transfY.toFloat())
@@ -510,7 +639,7 @@ class Triangle {
 
 
     // Set color with red, green, blue and alpha (opacity) values
-    val color = floatArrayOf(1.0f, 1.0f, 0.0f, 1.0f)
+    val color = floatArrayOf(1.0f, 0.0f, 1.0f, 1.0f)
 
 
 
