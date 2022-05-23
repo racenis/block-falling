@@ -166,18 +166,22 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
             dragging = -10
             if (abs(distanceX) > abs(distanceY)) {
                 if (distanceX > 0) {
-                    Triangle.Tetromino.locationX--
+                    //Triangle.Tetromino.locationX--
+                    Triangle.Tetromino.moveLeft()
                     requestRender()
                 } else {
-                    Triangle.Tetromino.locationX++
+                    //Triangle.Tetromino.locationX++
+                    Triangle.Tetromino.moveRight()
                     requestRender()
                 }
             } else {
                 if (distanceY > 0) {
-                    Triangle.Tetromino.locationY++
+                    //Triangle.Tetromino.locationY++
+                    Triangle.Tetromino.moveUp()
                     requestRender()
                 } else {
-                    Triangle.Tetromino.locationY--
+                    //Triangle.Tetromino.locationY--
+                    Triangle.Tetromino.moveDown()
                     requestRender()
                 }
             }
@@ -196,7 +200,9 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
     }
 
     override fun onDoubleTap(event: MotionEvent): Boolean {
-        Log.d(DEBUG_TAG, "onDoubleTap: $event")
+        //Log.d(DEBUG_TAG, "onDoubleTap: $event")
+        Triangle.Tetromino.dropDown()
+        requestRender()
         return true
     }
 
@@ -316,8 +322,12 @@ class Triangle {
         val cornerZ: Float  = -1.0f
         var field = Array(width) { Array(length) { BooleanArray(depth) { false } } }
 
+        fun pointIsInside(x: Int, y: Int, z: Int) = x >= 0 && y >= 0 && z >= 0 && x < width && y < length && z < depth
+        fun pointIsCollide(x: Int, y: Int, z: Int) = field[x][y][z]
+        fun fieldAppend(x: Int, y: Int, z: Int) { field[x][y][z] = true }
+
         init {
-            field[0][0][0] = true
+            /*field[0][0][0] = true
             field[4][0][0] = true
             field[0][4][0] = true
             field[4][4][0] = true
@@ -335,7 +345,7 @@ class Triangle {
 
 
 
-            field[2][2][0] = true
+            field[2][2][0] = true*/
         }
 
         lateinit var vertices: FloatArray
@@ -519,6 +529,24 @@ class Triangle {
                 TetrominoSegment(1, 0),
                 TetrominoSegment(-1, 0),
                 TetrominoSegment(1, 1)
+            ),
+            listOf(
+                TetrominoSegment(0, 0),
+                TetrominoSegment(1, 0),
+                TetrominoSegment(0, 1),
+                TetrominoSegment(1, 1)
+            ),
+            listOf(
+                TetrominoSegment(0, 0),
+                TetrominoSegment(1, 0),
+                TetrominoSegment(-1, 0),
+                TetrominoSegment(0, 1)
+            ),
+            listOf(
+                TetrominoSegment(0, 0),
+                TetrominoSegment(1, 0),
+                TetrominoSegment(-1, 0),
+                TetrominoSegment(2, 0)
             )
         )
 
@@ -529,16 +557,82 @@ class Triangle {
         var locationY: Int = 2
         var locationZ: Int = 4
 
+        fun reset() {
+            locationX = 2
+            locationY = 2
+            locationZ = 4
+            Matrix.setIdentityM(rotationMatrix, 0)
+            current = TetrominoType.random()
+        }
+
 
         var rotationMatrix = FloatArray(16)
         init {
             Matrix.setIdentityM(rotationMatrix, 0)
         }
 
-        fun rotateUp() = Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 1.0f, 0.0f)
-        fun rotateDown() = Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 1.0f, 0.0f)
-        fun rotateLeft() = Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 0.0f, 1.0f)
-        fun rotateRight() = Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 0.0f, 1.0f)
+        fun rotateUp() {
+            val oldMatrix = rotationMatrix.copyOf()
+            Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 1.0f, 0.0f)
+            if(!isLocationRotationValid()) rotationMatrix = oldMatrix
+        }
+        fun rotateDown() {
+            val oldMatrix = rotationMatrix.copyOf()
+            Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 1.0f, 0.0f)
+            if(!isLocationRotationValid()) rotationMatrix = oldMatrix
+        }
+        fun rotateLeft() {
+            val oldMatrix = rotationMatrix.copyOf()
+            Matrix.rotateM(rotationMatrix, 0, 90.0f, 0.0f, 0.0f, 1.0f)
+            if(!isLocationRotationValid()) rotationMatrix = oldMatrix
+        }
+        fun rotateRight() {
+            val oldMatrix = rotationMatrix.copyOf()
+            Matrix.rotateM(rotationMatrix, 0, -90.0f, 0.0f, 0.0f, 1.0f)
+            if(!isLocationRotationValid()) rotationMatrix = oldMatrix
+        }
+        fun moveLeft() {
+            val oldLocation = locationX
+            locationX--
+            if(!isLocationRotationValid()) locationX = oldLocation
+        }
+        fun moveRight() {
+            val oldLocation = locationX
+            locationX++
+            if(!isLocationRotationValid()) locationX = oldLocation
+        }
+        fun moveUp() {
+            val oldLocation = locationY
+            locationY++
+            if(!isLocationRotationValid()) locationY = oldLocation
+        }
+        fun moveDown() {
+            val oldLocation = locationY
+            locationY--
+            if(!isLocationRotationValid()) locationY = oldLocation
+        }
+        fun dropDown() {
+            val oldLocation = locationZ
+            locationZ--
+            if(!isLocationRotationValid()) {
+                locationZ = oldLocation
+                for (t in current) Field.fieldAppend(t.transfX, t.transfY, t.transfZ)
+                reset()
+            }
+        }
+
+
+
+        fun isLocationRotationValid(): Boolean {
+            for (t in current) {
+                t.applyRotation(rotationMatrix)
+                if (
+                    !Field.pointIsInside(t.transfX, t.transfY, t.transfZ) ||
+                    Field.pointIsCollide(t.transfX, t.transfY, t.transfZ)
+                ) return false
+            }
+            return true
+        }
 
         lateinit var vertices: FloatArray
 
