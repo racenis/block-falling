@@ -17,6 +17,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.GestureDetectorCompat
+import com.example.myapplication.Triangle.Field.fieldReset
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -226,14 +227,16 @@ class MyGLRenderer : GLSurfaceView.Renderer {
 
     // vPMatrix is an abbreviation for "Model View Projection Matrix"
     private val vPMatrix = FloatArray(16)
+    private val scaleMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
+    private val scaleViewMatrix = FloatArray(16)
     private val viewMatrix = FloatArray(16)
 
 
 
     override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
         // Set the background frame color
-        GLES30.glClearColor(0.0f, 1.0f, 0.0f, 1.0f)
+        GLES30.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
 
         GLES30.glEnable( GLES30.GL_DEPTH_TEST );
         GLES30.glDepthFunc( GLES30.GL_LEQUAL );
@@ -262,9 +265,13 @@ class MyGLRenderer : GLSurfaceView.Renderer {
         GLES30.glViewport(0, 0, width, height)
 
         val ratio: Float = width.toFloat() / height.toFloat()
-        Matrix.frustumM(projectionMatrix, 0, -ratio, ratio, -1f, 1f, 3f, 7f)
-        Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 3f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
-        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+
+        Matrix.setIdentityM(scaleMatrix, 0)
+        Matrix.scaleM(scaleMatrix, 0, 1.9f, 1.9f, 1.0f)
+        Matrix.frustumM(projectionMatrix, 0, -ratio, ratio, -1f, 1f, 0.5f, 7f)
+        Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 0.5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
+        Matrix.multiplyMM(scaleViewMatrix, 0, viewMatrix, 0, scaleMatrix, 0)
+        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, scaleViewMatrix, 0)
     }
 
     
@@ -316,15 +323,34 @@ class Triangle {
         val width: Int = 5
         val length: Int = 5
         val depth: Int = 7
-        val fieldUnit: Float  = 0.15f
+        val fieldUnit: Float  = 0.14f
         val cornerX: Float  = 0.0f - ((fieldUnit * width.toFloat()) / 2.0f)
         val cornerY: Float  = 0.0f - ((fieldUnit * length.toFloat()) / 2.0f)
         val cornerZ: Float  = -1.0f
         var field = Array(width) { Array(length) { BooleanArray(depth) { false } } }
+        var fieldColors = Array(depth) { floatArrayOf( Random.nextFloat(), Random.nextFloat(), Random.nextFloat()) }
+        var fieldColorModifers = Array(width) { Array(length) { Array(depth) { Array(8)
+        { floatArrayOf((Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f) } } } }
 
-        fun pointIsInside(x: Int, y: Int, z: Int) = x >= 0 && y >= 0 && z >= 0 && x < width && y < length && z < depth
-        fun pointIsCollide(x: Int, y: Int, z: Int) = field[x][y][z]
+        fun pointIsInside(x: Int, y: Int, z: Int) = x >= 0 && y >= 0 && z >= 0 && x < width && y < length //&& z < depth
+        fun pointIsCollide(x: Int, y: Int, z: Int) = if (z < depth) field[x][y][z] else false
         fun fieldAppend(x: Int, y: Int, z: Int) { field[x][y][z] = true }
+        fun fieldCheckBottomLayer() {
+            for (i in 0 until width)
+                for (j in 0 until length)
+                    if(!field[i][j][0]) return
+
+            for (i in 0 until width)
+                for (j in 0 until length)
+                    for (k in 0 until depth-1)
+                        field[i][j][k] = field[i][j][k+1]
+        }
+        fun fieldReset() {
+            for (i in 0 until width)
+                for (j in 0 until length)
+                    for (k in 0 until depth)
+                        field[i][j][k] = false
+        }
 
         init {
             /*field[0][0][0] = true
@@ -352,6 +378,8 @@ class Triangle {
         lateinit var colors: FloatArray
         lateinit var textures: FloatArray
 
+        lateinit var backgroundLines: FloatArray
+
         fun assembleVertexArrays() {
             Log.d("AAA", "Assembling field vertices")
             var verts: MutableList<Float> = mutableListOf()
@@ -369,15 +397,19 @@ class Triangle {
                     val c_upper: Float = cornerY + (fieldUnit * (j+1).toFloat())
                     val c_bottom: Float = cornerZ + (fieldUnit * k.toFloat())
                     val c_top: Float = cornerZ + (fieldUnit * (k+1).toFloat())
-                    val col = {colrs.add(Random.nextFloat()); colrs.add(Random.nextFloat()); colrs.add(Random.nextFloat()); colrs.add(1.0f)}
-                    val tlf = {verts.add(c_left); verts.add(c_upper); verts.add(c_top); col()}
-                    val trf = {verts.add(c_right); verts.add(c_upper); verts.add(c_top); col()}
-                    val blf = {verts.add(c_left); verts.add(c_lower); verts.add(c_top); col()}
-                    val brf = {verts.add(c_right); verts.add(c_lower); verts.add(c_top); col()}
-                    val tlb = {verts.add(c_left); verts.add(c_upper); verts.add(c_bottom); col()}
-                    val trb = {verts.add(c_right); verts.add(c_upper); verts.add(c_bottom); col()}
-                    val blb = {verts.add(c_left); verts.add(c_lower); verts.add(c_bottom); col()}
-                    val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom); col()}
+                    val col = { d:Int ->
+                        colrs.add((fieldColors[k][0] + fieldColorModifers[i][j][k][d][0]).coerceIn(0.0f, 1.0f));
+                        colrs.add((fieldColors[k][1] + fieldColorModifers[i][j][k][d][1]).coerceIn(0.0f, 1.0f));
+                        colrs.add((fieldColors[k][2] + fieldColorModifers[i][j][k][d][2]).coerceIn(0.0f, 1.0f));
+                        colrs.add(1.0f)}
+                    val tlf = {verts.add(c_left); verts.add(c_upper); verts.add(c_top); col(0)}
+                    val trf = {verts.add(c_right); verts.add(c_upper); verts.add(c_top); col(1)}
+                    val blf = {verts.add(c_left); verts.add(c_lower); verts.add(c_top); col(2)}
+                    val brf = {verts.add(c_right); verts.add(c_lower); verts.add(c_top); col(3)}
+                    val tlb = {verts.add(c_left); verts.add(c_upper); verts.add(c_bottom); col(4)}
+                    val trb = {verts.add(c_right); verts.add(c_upper); verts.add(c_bottom); col(5)}
+                    val blb = {verts.add(c_left); verts.add(c_lower); verts.add(c_bottom); col(6)}
+                    val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom); col(7)}
 
                     // virsējais
                     tlf()
@@ -426,6 +458,88 @@ class Triangle {
             vertices = verts.toFloatArray()
             colors = colrs.toFloatArray()
         }
+
+        fun assembleBackgroundLines() {
+            var lines: MutableList<Float> = mutableListOf()
+
+            for (i in 0..width) {
+                // augša
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY)
+                lines.add(cornerZ + fieldUnit*depth.toFloat())
+
+                // 2x apakša
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY)
+                lines.add(cornerZ)
+
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY)
+                lines.add(cornerZ)
+
+                // 2x apakša, otra puse
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY + fieldUnit*length.toFloat())
+                lines.add(cornerZ)
+
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY + fieldUnit*length.toFloat())
+                lines.add(cornerZ)
+
+                // augša, otra puse
+                lines.add(cornerX + fieldUnit*i.toFloat())
+                lines.add(cornerY + fieldUnit*length.toFloat())
+                lines.add(cornerZ + fieldUnit*depth.toFloat())
+            }
+
+            for (i in 0..length) {
+                // augša
+                lines.add(cornerX)
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ + fieldUnit*depth.toFloat())
+
+                // 2x apakša
+                lines.add(cornerX)
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ)
+
+                lines.add(cornerX)
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ)
+
+                // 2x apakša, otra puse
+                lines.add(cornerX + fieldUnit*width.toFloat())
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ)
+
+                lines.add(cornerX + fieldUnit*width.toFloat())
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ)
+
+                // augša, otra puse
+                lines.add(cornerX + fieldUnit*width.toFloat())
+                lines.add(cornerY + fieldUnit*i.toFloat())
+                lines.add(cornerZ + fieldUnit*depth.toFloat())
+            }
+
+            for (i in 0..depth) {
+                var c = {lines.add(cornerX); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var cw = {lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var ch = {lines.add(cornerX); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var cwh = {lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+
+                c()
+                cw()
+                c()
+                ch()
+                cwh()
+                cw()
+                cwh()
+                ch()
+            }
+
+            backgroundLines = lines.toFloatArray()
+        }
     }
 
     object Tetromino {
@@ -450,78 +564,6 @@ class Triangle {
             val transfZ
                 get() = locationZ + rotated[2].roundToInt()
 
-            /*
-            val transfX
-                get() = locationX + when(Pair(rotationX, rotationY)){
-                    Pair(0, 0) -> x
-                    Pair(1, 0) -> y
-                    Pair(2, 0) -> -x
-                    Pair(3, 0) -> -y
-
-                    Pair(0, 1) -> x
-                    Pair(1, 1) -> y
-                    Pair(2, 1) -> -x
-                    Pair(3, 1) -> -y
-
-                    Pair(0, 2) -> x
-                    Pair(1, 2) -> y
-                    Pair(2, 2) -> -x
-                    Pair(3, 2) -> -y
-
-                    Pair(0, 3) -> x
-                    Pair(1, 3) -> y
-                    Pair(2, 3) -> -x
-                    Pair(3, 3) -> -y
-
-                    else -> x
-                }
-            val transfY
-                get() = locationY + when(Pair(rotationX, rotationY)){
-                    Pair(0, 0) -> y
-                    Pair(1, 0) -> x
-                    Pair(2, 0) -> -y
-                    Pair(3, 0) -> -x
-
-                    Pair(0, 1) -> 0
-                    Pair(1, 1) -> 0
-                    Pair(2, 1) -> 0
-                    Pair(3, 1) -> 0
-
-                    Pair(0, 2) -> -y
-                    Pair(1, 2) -> -x
-                    Pair(2, 2) -> y
-                    Pair(3, 2) -> x
-
-                    Pair(0, 3) -> 0
-                    Pair(1, 3) -> 0
-                    Pair(2, 3) -> 0
-                    Pair(3, 3) -> 0
-                    else -> y
-                }
-            val transfZ
-                get() = locationZ + when(Pair(rotationX, rotationY)){
-                    Pair(0, 0) -> 0
-                    Pair(1, 0) -> 0
-                    Pair(2, 0) -> 0
-                    Pair(3, 0) -> 0
-
-                    Pair(0, 1) -> y
-                    Pair(1, 1) -> x
-                    Pair(2, 1) -> -y
-                    Pair(3, 1) -> -x
-
-                    Pair(0, 2) -> 0
-                    Pair(1, 2) -> 0
-                    Pair(2, 2) -> 0
-                    Pair(3, 2) -> 0
-
-                    Pair(0, 3) -> -y
-                    Pair(1, 3) -> -x
-                    Pair(2, 3) -> y
-                    Pair(3, 3) -> x
-                    else -> 0
-                }
-             */
         }
         val TetrominoType = listOf(
             listOf(
@@ -547,22 +589,29 @@ class Triangle {
                 TetrominoSegment(1, 0),
                 TetrominoSegment(-1, 0),
                 TetrominoSegment(2, 0)
+            ),
+            listOf(
+                TetrominoSegment(0, 0),
+                TetrominoSegment(-1, 0),
+                TetrominoSegment(0, 1),
+                TetrominoSegment(1, 1)
             )
         )
 
         var current = TetrominoType[0]
         var rotationX: Int = 0
         var rotationY: Int = 0
-        var locationX: Int = 2
-        var locationY: Int = 2
-        var locationZ: Int = 4
+        var locationX: Int = Field.width / 2
+        var locationY: Int = Field.length / 2
+        var locationZ: Int = Field.depth - 1
 
         fun reset() {
-            locationX = 2
-            locationY = 2
-            locationZ = 4
+            locationX = Field.width / 2
+            locationY = Field.length / 2
+            locationZ = Field.depth - 1
             Matrix.setIdentityM(rotationMatrix, 0)
             current = TetrominoType.random()
+            if (!isLocationRotationValid()) Field.fieldReset();
         }
 
 
@@ -617,6 +666,7 @@ class Triangle {
             if(!isLocationRotationValid()) {
                 locationZ = oldLocation
                 for (t in current) Field.fieldAppend(t.transfX, t.transfY, t.transfZ)
+                Field.fieldCheckBottomLayer()
                 reset()
             }
         }
@@ -733,7 +783,8 @@ class Triangle {
 
 
     // Set color with red, green, blue and alpha (opacity) values
-    val color = floatArrayOf(1.0f, 0.0f, 1.0f, 1.0f)
+    val tetrominoColor = floatArrayOf(1.0f, 0.0f, 1.0f, 1.0f)
+    val backgroundLineColor = floatArrayOf(0.0f, 1.0f, 0.0f, 1.0f)
 
 
 
@@ -752,11 +803,14 @@ class Triangle {
     fun draw(mvpMatrix: FloatArray) {
         Log.d("AAA", "Starting the draw")
         Field.assembleVertexArrays()
+        Field.assembleBackgroundLines()
         Tetromino.assembleVertexArrays()
 
         val triangles = Field.vertices
         val colors = Field.colors
         val lines = Tetromino.vertices
+
+        val backgroundLines = Field.backgroundLines
 
         Log.d("AAA", "Making buffers")
         var vertexBuffer: FloatBuffer =
@@ -782,6 +836,15 @@ class Triangle {
                 order(ByteOrder.nativeOrder())
                 asFloatBuffer().apply {
                     put(lines)
+                    position(0)
+                }
+            }
+
+        var backgroundLineVertexBuffer: FloatBuffer =
+            ByteBuffer.allocateDirect(backgroundLines.size * 4).run {
+                order(ByteOrder.nativeOrder())
+                asFloatBuffer().apply {
+                    put(backgroundLines)
                     position(0)
                 }
             }
@@ -814,9 +877,9 @@ class Triangle {
         )
 
 
-        mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
+        /*mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
             GLES30.glUniform4fv(colorHandle, 1, color, 0)
-        }
+        }*/
 
         vPMatrixHandle = GLES30.glGetUniformLocation(mProgram, "uMVPMatrix")
         GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
@@ -825,8 +888,6 @@ class Triangle {
 
         GLES30.glDisableVertexAttribArray(colorHandle)
         GLES30.glDisableVertexAttribArray(positionHandle)
-
-
 
 
 
@@ -842,11 +903,36 @@ class Triangle {
             GLES30.GL_FLOAT,
             false,
             vertexStride,
+            backgroundLineVertexBuffer
+        )
+
+        mColorHandle = GLES30.glGetUniformLocation(lineShader, "vColor").also { colorHandle ->
+            GLES30.glUniform4fv(colorHandle, 1, backgroundLineColor, 0)
+        }
+
+        vPMatrixHandle = GLES30.glGetUniformLocation(lineShader, "uMVPMatrix")
+        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+
+        GLES30.glDrawArrays(GLES30.GL_LINES, 0, backgroundLines.size / 3)
+
+        GLES30.glDisableVertexAttribArray(positionHandle)
+
+
+
+        GLES30.glDisable( GLES30.GL_DEPTH_TEST );
+        positionHandle = GLES30.glGetAttribLocation(lineShader, "vPosition")
+        GLES30.glEnableVertexAttribArray(positionHandle)
+        GLES30.glVertexAttribPointer(
+            positionHandle,
+            COORDS_PER_VERTEX,
+            GLES30.GL_FLOAT,
+            false,
+            vertexStride,
             lineVertexBuffer
         )
 
         mColorHandle = GLES30.glGetUniformLocation(lineShader, "vColor").also { colorHandle ->
-            GLES30.glUniform4fv(colorHandle, 1, color, 0)
+            GLES30.glUniform4fv(colorHandle, 1, tetrominoColor, 0)
         }
 
         vPMatrixHandle = GLES30.glGetUniformLocation(lineShader, "uMVPMatrix")
@@ -855,6 +941,7 @@ class Triangle {
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, lines.size / 3)
 
         GLES30.glDisableVertexAttribArray(positionHandle)
+        GLES30.glEnable( GLES30.GL_DEPTH_TEST );
 
     }
 
