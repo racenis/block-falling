@@ -12,18 +12,11 @@ import android.view.MotionEvent
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
-import android.view.View
-import android.widget.Button
-import android.widget.ImageView
-import android.widget.TextView
 import androidx.core.view.GestureDetectorCompat
-import com.example.myapplication.Triangle.Field.fieldReset
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
-import java.nio.ShortBuffer
 import kotlin.math.abs
-import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -35,60 +28,30 @@ class MainActivity : AppCompatActivity() {
         //setContentView(R.layout.activity_main)
 
         Log.d("AAA", "Starting")
-        gLView = MyGLSurfaceView(this)
+        gLView = FieldSurfaceView(this)
         setContentView(gLView)
-
-
-
-
-        /*val benis: Button = findViewById(R.id.yes_button)
-        benis.setOnClickListener {
-            val bimage: ImageView = findViewById(R.id.indian_image)
-            bimage.visibility = View.VISIBLE
-
-            val btext: TextView = findViewById(R.id.r_u_gay_text)
-            btext.visibility = View.GONE
-
-            benis.visibility = View.GONE
-
-        }*/
     }
 }
 
-private const val DEBUG_TAG = "Gestures"
-
-
-class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener {
-
-    private val renderer: MyGLRenderer
-
-    private lateinit var mDetector: GestureDetectorCompat
+class FieldSurfaceView(context: Context) : GLSurfaceView(context), GestureDetector.OnGestureListener, GestureDetector.OnDoubleTapListener {
+    private var gestureDetector: GestureDetectorCompat
 
     private var dragged = false
     private var dragging = 0
 
     init {
-
-        // Create an OpenGL ES 2.0 context
         setEGLContextClientVersion(3)
 
-        renderer = MyGLRenderer()
-
-        // Set the Renderer for drawing on the GLSurfaceView
-        setRenderer(renderer)
+        setRenderer(FieldRenderer())
 
         renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
 
-
-
-
-        mDetector = GestureDetectorCompat(context, this)
-        mDetector.setOnDoubleTapListener(this)
-
+        gestureDetector = GestureDetectorCompat(context, this)
+        gestureDetector.setOnDoubleTapListener(this)
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        return if (mDetector.onTouchEvent(e)) {
+        return if (gestureDetector.onTouchEvent(e)) {
             true
         } else {
             super.onTouchEvent(e)
@@ -96,51 +59,27 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
     }
 
     override fun onDown(event: MotionEvent): Boolean {
-        Log.d(DEBUG_TAG, "onDown: $event")
         dragging = 0
         dragged = false
         return true
     }
 
-    override fun onFling(
-        event1: MotionEvent,
-        event2: MotionEvent,
-        velocityX: Float,
-        velocityY: Float
-    ): Boolean {
-        //Log.d(DEBUG_TAG, "onFling: $event1 $event2")
-        //Log.d("FLING", "FLINGAA: $velocityX $velocityY")
-        if(abs(velocityX) > 5000 || abs(velocityY) > 5000) {
-            if(abs(velocityX) > abs(velocityY)){
-                if(velocityX > 0){
-                    Log.d("FLING", "right")
-                    // right
-                    //Triangle.Tetromino.rotationX += 1
-                    //if (Triangle.Tetromino.rotationX > 3) Triangle.Tetromino.rotationX = 0
-                    Triangle.Tetromino.rotateRight()
+    override fun onFling (event1: MotionEvent, event2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+        if (abs(velocityX) > 5000 || abs(velocityY) > 5000) {
+            if (abs(velocityX) > abs(velocityY)) {
+                if (velocityX > 0) {
+                    Application.Tetromino.rotateRight()
                     requestRender()
                 } else {
-                    Log.d("FLING", "left")
-                    // left
-                    Triangle.Tetromino.rotateLeft()
-                    //Triangle.Tetromino.rotationX -= 1
-                    //if (Triangle.Tetromino.rotationX < 0) Triangle.Tetromino.rotationX = 3
+                    Application.Tetromino.rotateLeft()
                     requestRender()
                 }
             } else {
-                if(velocityY > 0){
-                    Log.d("FLING", "down")
-                    // down
-                    Triangle.Tetromino.rotateDown()
-                    //Triangle.Tetromino.rotationY += 1
-                    //if (Triangle.Tetromino.rotationY > 3) Triangle.Tetromino.rotationY = 0
+                if (velocityY > 0) {
+                    Application.Tetromino.rotateDown()
                     requestRender()
                 } else {
-                    Log.d("FLING", "up")
-                    // up
-                    Triangle.Tetromino.rotateUp()
-                    //Triangle.Tetromino.rotationY -= 1
-                    //if (Triangle.Tetromino.rotationY < 0) Triangle.Tetromino.rotationY = 3
+                    Application.Tetromino.rotateUp()
                     requestRender()
                 }
             }
@@ -148,85 +87,47 @@ class MyGLSurfaceView(context: Context) : GLSurfaceView(context), GestureDetecto
         return true
     }
 
-    override fun onLongPress(event: MotionEvent) {
-        Log.d(DEBUG_TAG, "onLongPress: $event")
-    }
-
-    override fun onScroll(
-        event1: MotionEvent,
-        event2: MotionEvent,
-        distanceX: Float,
-        distanceY: Float
-    ): Boolean {
-        //Log.d(DEBUG_TAG, "onScroll: $event1 $event2")
-        Log.d(DEBUG_TAG, "onScroll: $dragging")
+    override fun onScroll (event1: MotionEvent, event2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
         dragging++
         if (/*!dragged &&*/ (dragging > 10) && (abs(distanceX) > 2 || abs(distanceY) > 2)) {
-            Log.d(DEBUG_TAG, "OYOYOYOYOYOYOOOOYOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
             dragged = true
             dragging = -10
             if (abs(distanceX) > abs(distanceY)) {
                 if (distanceX > 0) {
-                    //Triangle.Tetromino.locationX--
-                    Triangle.Tetromino.moveLeft()
+                    Application.Tetromino.moveLeft()
                     requestRender()
                 } else {
-                    //Triangle.Tetromino.locationX++
-                    Triangle.Tetromino.moveRight()
+                    Application.Tetromino.moveRight()
                     requestRender()
                 }
             } else {
                 if (distanceY > 0) {
-                    //Triangle.Tetromino.locationY++
-                    Triangle.Tetromino.moveUp()
+                    Application.Tetromino.moveUp()
                     requestRender()
                 } else {
-                    //Triangle.Tetromino.locationY--
-                    Triangle.Tetromino.moveDown()
+                    Application.Tetromino.moveDown()
                     requestRender()
                 }
             }
         }
-        //Log.d(DEBUG_TAG, "onScroll: $distanceX $distanceY")
-        return true
-    }
-
-    override fun onShowPress(event: MotionEvent) {
-        Log.d(DEBUG_TAG, "onShowPress: $event")
-    }
-
-    override fun onSingleTapUp(event: MotionEvent): Boolean {
-        Log.d(DEBUG_TAG, "onSingleTapUp: $event")
         return true
     }
 
     override fun onDoubleTap(event: MotionEvent): Boolean {
-        //Log.d(DEBUG_TAG, "onDoubleTap: $event")
-        Triangle.Tetromino.dropDown()
+        Application.Tetromino.dropDown()
         requestRender()
         return true
     }
 
-    override fun onDoubleTapEvent(event: MotionEvent): Boolean {
-        Log.d(DEBUG_TAG, "onDoubleTapEvent: $event")
-        return true
-    }
-
-    override fun onSingleTapConfirmed(event: MotionEvent): Boolean {
-        Log.d(DEBUG_TAG, "onSingleTapConfirmed: $event")
-        return true
-    }
-
-
-
+    override fun onShowPress(event: MotionEvent) = Unit
+    override fun onLongPress(event: MotionEvent) = Unit
+    override fun onSingleTapUp(event: MotionEvent): Boolean = true
+    override fun onDoubleTapEvent(event: MotionEvent): Boolean = true
+    override fun onSingleTapConfirmed(event: MotionEvent): Boolean = true
 }
 
-class MyGLRenderer : GLSurfaceView.Renderer {
-    private lateinit var mTriangle: Triangle
-    //private lateinit var mSquare: Square
-
-    // vPMatrix is an abbreviation for "Model View Projection Matrix"
-    private val vPMatrix = FloatArray(16)
+class FieldRenderer : GLSurfaceView.Renderer {
+    private val projMatrix = FloatArray(16)
     private val scaleMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
     private val scaleViewMatrix = FloatArray(16)
@@ -243,22 +144,11 @@ class MyGLRenderer : GLSurfaceView.Renderer {
         GLES30.glDepthMask( true );
 
         GLES30.glEnable(GLES30.GL_CULL_FACE)
-
-        // initialize a triangle
-        mTriangle = Triangle()
-        // initialize a square
-        //mSquare = Square2()
-
-
-
-
     }
 
     override fun onDrawFrame(unused: GL10) {
-        // Redraw background color
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-
-        mTriangle.draw(vPMatrix)
+        Application.draw(projMatrix)
     }
 
     override fun onSurfaceChanged(unused: GL10, width: Int, height: Int) {
@@ -271,7 +161,7 @@ class MyGLRenderer : GLSurfaceView.Renderer {
         Matrix.frustumM(projectionMatrix, 0, -ratio, ratio, -1f, 1f, 0.5f, 7f)
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, 0.5f, 0f, 0f, 0f, 0f, 1.0f, 0.0f)
         Matrix.multiplyMM(scaleViewMatrix, 0, viewMatrix, 0, scaleMatrix, 0)
-        Matrix.multiplyMM(vPMatrix, 0, projectionMatrix, 0, scaleViewMatrix, 0)
+        Matrix.multiplyMM(projMatrix, 0, projectionMatrix, 0, scaleViewMatrix, 0)
     }
 
     
@@ -300,25 +190,7 @@ fun loadShader(vertexCode: String, fragmentCode: String): Int {
     return shader
 }
 
-
-
-
-// number of coordinates per vertex in this array
-const val COORDS_PER_VERTEX = 3
-var triangleCoords = floatArrayOf(     // in counterclockwise order:
-    0.0f, 0.622008459f, 0.0f,      // top
-    -0.5f, -0.311004243f, 0.0f,    // bottom left
-    0.5f, -0.311004243f, 0.0f      // bottom right
-)
-
-var triangleColors = floatArrayOf(
-    1.0f, 0.0f, 0.0f, 1.0f,
-    0.0f, 1.0f, 0.0f, 1.0f,
-    0.0f, 0.0f, 1.0f, 1.0f,
-)
-
-class Triangle {
-
+object Application {
     object Field {
         val width: Int = 5
         val length: Int = 5
@@ -352,32 +224,8 @@ class Triangle {
                         field[i][j][k] = false
         }
 
-        init {
-            /*field[0][0][0] = true
-            field[4][0][0] = true
-            field[0][4][0] = true
-            field[4][4][0] = true
-
-            field[0][0][1] = true
-            field[4][0][1] = true
-            field[0][4][1] = true
-            field[4][4][1] = true
-
-            field[0][0][2] = true
-            field[4][0][2] = true
-            field[0][4][2] = true
-            field[4][4][2] = true
-
-
-
-
-            field[2][2][0] = true*/
-        }
-
         lateinit var vertices: FloatArray
         lateinit var colors: FloatArray
-        lateinit var textures: FloatArray
-
         lateinit var backgroundLines: FloatArray
 
         fun assembleVertexArrays() {
@@ -388,9 +236,8 @@ class Triangle {
             for (i in 0 until width)
             for (j in 0 until length)
             for (k in 0 until depth){
-                //Log.d("AAA", "Checking $i $j $k")
                 if(field[i][j][k]){
-                    Log.d("AAA", "Found $i $j $k")
+                    //Log.d("AAA", "Found $i $j $k")
                     val c_left: Float = cornerX + (fieldUnit * i.toFloat())
                     val c_right: Float = cornerX + (fieldUnit * (i+1).toFloat())
                     val c_lower: Float = cornerY + (fieldUnit * j.toFloat())
@@ -412,45 +259,19 @@ class Triangle {
                     val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom); col(7)}
 
                     // virsējais
-                    tlf()
-                    blf()
-                    brf()
-                    brf()
-                    trf()
-                    tlf()
+                    tlf(); blf(); brf(); brf(); trf(); tlf()
 
                     // augšējais
-                    trf()
-                    trb()
-                    tlb()
-                    tlb()
-                    tlf()
-                    trf()
+                    trf(); trb(); tlb(); tlb(); tlf(); trf()
 
                     // apakšējais
-
-                    brf()
-                    blf()
-                    blb()
-                    blb()
-                    brb()
-                    brf()
+                    brf(); blf(); blb(); blb(); brb(); brf()
 
                     // kreisais
-                    tlf()
-                    tlb()
-                    blb()
-                    blb()
-                    blf()
-                    tlf()
+                    tlf(); tlb(); blb(); blb(); blf(); tlf()
 
                     // labais
-                    trf()
-                    brf()
-                    brb()
-                    brb()
-                    trb()
-                    trf()
+                    trf(); brf(); brb(); brb(); trb(); trf()
                 }
             }
 
@@ -472,7 +293,6 @@ class Triangle {
                 lines.add(cornerX + fieldUnit*i.toFloat())
                 lines.add(cornerY)
                 lines.add(cornerZ)
-
                 lines.add(cornerX + fieldUnit*i.toFloat())
                 lines.add(cornerY)
                 lines.add(cornerZ)
@@ -481,7 +301,6 @@ class Triangle {
                 lines.add(cornerX + fieldUnit*i.toFloat())
                 lines.add(cornerY + fieldUnit*length.toFloat())
                 lines.add(cornerZ)
-
                 lines.add(cornerX + fieldUnit*i.toFloat())
                 lines.add(cornerY + fieldUnit*length.toFloat())
                 lines.add(cornerZ)
@@ -502,7 +321,6 @@ class Triangle {
                 lines.add(cornerX)
                 lines.add(cornerY + fieldUnit*i.toFloat())
                 lines.add(cornerZ)
-
                 lines.add(cornerX)
                 lines.add(cornerY + fieldUnit*i.toFloat())
                 lines.add(cornerZ)
@@ -511,7 +329,6 @@ class Triangle {
                 lines.add(cornerX + fieldUnit*width.toFloat())
                 lines.add(cornerY + fieldUnit*i.toFloat())
                 lines.add(cornerZ)
-
                 lines.add(cornerX + fieldUnit*width.toFloat())
                 lines.add(cornerY + fieldUnit*i.toFloat())
                 lines.add(cornerZ)
@@ -523,19 +340,12 @@ class Triangle {
             }
 
             for (i in 0..depth) {
-                var c = {lines.add(cornerX); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
-                var cw = {lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
-                var ch = {lines.add(cornerX); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
-                var cwh = {lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var c = { lines.add(cornerX); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var cw = { lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var ch = { lines.add(cornerX); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
+                var cwh = { lines.add(cornerX + fieldUnit*width.toFloat()); lines.add(cornerY + fieldUnit*length.toFloat()); lines.add(cornerZ + fieldUnit*i.toFloat()); }
 
-                c()
-                cw()
-                c()
-                ch()
-                cwh()
-                cw()
-                cwh()
-                ch()
+                c(); cw(); c(); ch(); cwh(); cw(); cwh(); ch()
             }
 
             backgroundLines = lines.toFloatArray()
@@ -599,8 +409,6 @@ class Triangle {
         )
 
         var current = TetrominoType[0]
-        var rotationX: Int = 0
-        var rotationY: Int = 0
         var locationX: Int = Field.width / 2
         var locationY: Int = Field.length / 2
         var locationZ: Int = Field.depth - 1
@@ -708,32 +516,14 @@ class Triangle {
                 val blb = {verts.add(c_left); verts.add(c_lower); verts.add(c_bottom)}
                 val brb = {verts.add(c_right); verts.add(c_lower); verts.add(c_bottom)}
 
-                tlf()
-                trf()
-                trf()
-                brf()
-                brf()
-                blf()
-                blf()
-                tlf()
+                // augša
+                tlf(); trf(); trf(); brf(); brf(); blf(); blf(); tlf()
 
-                tlb()
-                trb()
-                trb()
-                brb()
-                brb()
-                blb()
-                blb()
-                tlb()
+                // apakša
+                tlb(); trb(); trb(); brb(); brb(); blb(); blb(); tlb()
 
-                tlf()
-                tlb()
-                trf()
-                trb()
-                brf()
-                brb()
-                blf()
-                blb()
+                // malas
+                tlf(); tlb(); trf(); trb(); brf(); brb(); blf(); blb()
 
             }
 
@@ -744,40 +534,39 @@ class Triangle {
     }
 
     private val vertexShaderCode =
-        "uniform mat4 uMVPMatrix;" +
-                "attribute vec4 vPosition;" +
-                "attribute vec4 veColor;" +
+        "uniform mat4 projMatrix;" +
+                "attribute vec4 vertPosition;" +
+                "attribute vec4 vColor;" +
                 "varying vec4 vertColor;" +
                 "void main() {" +
-                "  gl_Position = uMVPMatrix * vPosition;" +
-                "  vertColor = veColor;" +
+                "  gl_Position = projMatrix * vertPosition;" +
+                "  vertColor = vColor;" +
                 "}"
 
     private val fragmentShaderCode =
         "precision mediump float;" +
-                "uniform vec4 vColor;" +
                 "varying vec4 vertColor;" +
                 "void main() {" +
                 "  gl_FragColor = vertColor;" +
                 "}"
 
     private val lineVertexShaderCode =
-        "uniform mat4 uMVPMatrix;" +
-                "attribute vec4 vPosition;" +
+        "uniform mat4 projMatrix;" +
+                "attribute vec4 vertPosition;" +
                 "void main() {" +
-                "  gl_Position = uMVPMatrix * vPosition;" +
+                "  gl_Position = projMatrix * vertPosition;" +
                 "}"
 
     private val lineFragmentShaderCode =
         "precision mediump float;" +
-                "uniform vec4 vColor;" +
+                "uniform vec4 vertColor;" +
                 "void main() {" +
-                "  gl_FragColor = vColor;" +
+                "  gl_FragColor = vertColor;" +
                 "}"
 
 
     // Use to access and set the view transformation
-    private var vPMatrixHandle: Int = 0
+    private var projMatrixIndex: Int = 0
 
 
 
@@ -785,22 +574,22 @@ class Triangle {
     // Set color with red, green, blue and alpha (opacity) values
     val tetrominoColor = floatArrayOf(1.0f, 0.0f, 1.0f, 1.0f)
     val backgroundLineColor = floatArrayOf(0.0f, 1.0f, 0.0f, 1.0f)
+    val backgroundColor  = floatArrayOf(0.0f, 0.0f, 0.0f, 1.0f)
 
 
 
 
-    private var mProgram: Int = loadShader(vertexShaderCode, fragmentShaderCode)
+    private var fieldShader: Int = loadShader(vertexShaderCode, fragmentShaderCode)
     private var lineShader: Int = loadShader(lineVertexShaderCode, lineFragmentShaderCode)
 
-    var positionHandle: Int = 0
-    var colorHandle: Int = 0
-    var mColorHandle: Int = 0
+    var positionIndex: Int = 0
+    var colorIndex: Int = 0
 
-    val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
-    val vertexStride: Int = COORDS_PER_VERTEX * 4 // 4 bytes per vertex
+    //val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
+    val vertexStride: Int = 3 * 4 // 4 bytes per vertex
     val colorVertexStride: Int = 4 * 4 // 4 bytes per vertex
 
-    fun draw(mvpMatrix: FloatArray) {
+    fun draw(mprojMatrix: FloatArray) {
         Log.d("AAA", "Starting the draw")
         Field.assembleVertexArrays()
         Field.assembleBackgroundLines()
@@ -852,23 +641,23 @@ class Triangle {
         Log.d("AAA", "Done making buffers")
 
 
-        GLES30.glUseProgram(mProgram)
+        GLES30.glUseProgram(fieldShader)
 
-        positionHandle = GLES30.glGetAttribLocation(mProgram, "vPosition")
-        GLES30.glEnableVertexAttribArray(positionHandle)
+        positionIndex = GLES30.glGetAttribLocation(fieldShader, "vertPosition")
+        GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
-            positionHandle,
-            COORDS_PER_VERTEX,
+            positionIndex,
+            3,
             GLES30.GL_FLOAT,
             false,
             vertexStride,
             vertexBuffer
         )
 
-        colorHandle = GLES30.glGetAttribLocation(mProgram, "veColor")
-        GLES30.glEnableVertexAttribArray(colorHandle)
+        colorIndex = GLES30.glGetAttribLocation(fieldShader, "vColor")
+        GLES30.glEnableVertexAttribArray(colorIndex)
         GLES30.glVertexAttribPointer(
-            colorHandle,
+            colorIndex,
             4, // krāsas kā 4 komponenšu vektors
             GLES30.GL_FLOAT,
             false,
@@ -877,17 +666,14 @@ class Triangle {
         )
 
 
-        /*mColorHandle = GLES30.glGetUniformLocation(mProgram, "vColor").also { colorHandle ->
-            GLES30.glUniform4fv(colorHandle, 1, color, 0)
-        }*/
 
-        vPMatrixHandle = GLES30.glGetUniformLocation(mProgram, "uMVPMatrix")
-        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+        projMatrixIndex = GLES30.glGetUniformLocation(fieldShader, "projMatrix")
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, triangles.size / 3)
 
-        GLES30.glDisableVertexAttribArray(colorHandle)
-        GLES30.glDisableVertexAttribArray(positionHandle)
+        GLES30.glDisableVertexAttribArray(colorIndex)
+        GLES30.glDisableVertexAttribArray(positionIndex)
 
 
 
@@ -895,52 +681,52 @@ class Triangle {
 
         GLES30.glUseProgram(lineShader)
 
-        positionHandle = GLES30.glGetAttribLocation(lineShader, "vPosition")
-        GLES30.glEnableVertexAttribArray(positionHandle)
+        positionIndex = GLES30.glGetAttribLocation(lineShader, "vertPosition")
+        GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
-            positionHandle,
-            COORDS_PER_VERTEX,
+            positionIndex,
+            3,
             GLES30.GL_FLOAT,
             false,
             vertexStride,
             backgroundLineVertexBuffer
         )
 
-        mColorHandle = GLES30.glGetUniformLocation(lineShader, "vColor").also { colorHandle ->
-            GLES30.glUniform4fv(colorHandle, 1, backgroundLineColor, 0)
-        }
+        colorIndex = GLES30.glGetUniformLocation(lineShader, "vertColor")
+        GLES30.glUniform4fv(colorIndex, 1, backgroundLineColor, 0)
 
-        vPMatrixHandle = GLES30.glGetUniformLocation(lineShader, "uMVPMatrix")
-        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+
+        projMatrixIndex = GLES30.glGetUniformLocation(lineShader, "projMatrix")
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, backgroundLines.size / 3)
 
-        GLES30.glDisableVertexAttribArray(positionHandle)
+        GLES30.glDisableVertexAttribArray(positionIndex)
 
 
 
         GLES30.glDisable( GLES30.GL_DEPTH_TEST );
-        positionHandle = GLES30.glGetAttribLocation(lineShader, "vPosition")
-        GLES30.glEnableVertexAttribArray(positionHandle)
+        positionIndex = GLES30.glGetAttribLocation(lineShader, "vertPosition")
+        GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
-            positionHandle,
-            COORDS_PER_VERTEX,
+            positionIndex,
+            3,
             GLES30.GL_FLOAT,
             false,
             vertexStride,
             lineVertexBuffer
         )
 
-        mColorHandle = GLES30.glGetUniformLocation(lineShader, "vColor").also { colorHandle ->
-            GLES30.glUniform4fv(colorHandle, 1, tetrominoColor, 0)
-        }
+        colorIndex = GLES30.glGetUniformLocation(lineShader, "vertColor")
+        GLES30.glUniform4fv(colorIndex, 1, tetrominoColor, 0)
 
-        vPMatrixHandle = GLES30.glGetUniformLocation(lineShader, "uMVPMatrix")
-        GLES30.glUniformMatrix4fv(vPMatrixHandle, 1, false, mvpMatrix, 0)
+
+        projMatrixIndex = GLES30.glGetUniformLocation(lineShader, "projMatrix")
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, lines.size / 3)
 
-        GLES30.glDisableVertexAttribArray(positionHandle)
+        GLES30.glDisableVertexAttribArray(positionIndex)
         GLES30.glEnable( GLES30.GL_DEPTH_TEST );
 
     }
