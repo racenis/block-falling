@@ -137,7 +137,7 @@ class FieldRenderer : GLSurfaceView.Renderer {
 
     override fun onSurfaceCreated(unused: GL10, config: EGLConfig) {
         // Set the background frame color
-        GLES30.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+        GLES30.glClearColor(Application.backgroundColor[0], Application.backgroundColor[1], Application.backgroundColor[2], 1.0f)
 
         GLES30.glEnable( GLES30.GL_DEPTH_TEST );
         GLES30.glDepthFunc( GLES30.GL_LEQUAL );
@@ -192,17 +192,16 @@ fun loadShader(vertexCode: String, fragmentCode: String): Int {
 
 object Application {
     object Field {
-        val width: Int = 5
-        val length: Int = 5
-        val depth: Int = 7
-        val fieldUnit: Float  = 0.14f
-        val cornerX: Float  = 0.0f - ((fieldUnit * width.toFloat()) / 2.0f)
-        val cornerY: Float  = 0.0f - ((fieldUnit * length.toFloat()) / 2.0f)
-        val cornerZ: Float  = -1.0f
-        var field = Array(width) { Array(length) { BooleanArray(depth) { false } } }
-        var fieldColors = Array(depth) { floatArrayOf( Random.nextFloat(), Random.nextFloat(), Random.nextFloat()) }
-        var fieldColorModifers = Array(width) { Array(length) { Array(depth) { Array(8)
-        { floatArrayOf((Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f) } } } }
+        var width: Int = 5
+        var length: Int = 5
+        var depth: Int  = 7
+        var fieldUnit: Float = 0.0f
+        var cornerX: Float = 0.0f
+        var cornerY: Float = 0.0f
+        var cornerZ: Float = 0.0f
+        lateinit var field: Array<Array<BooleanArray>>
+        lateinit var fieldColors: Array<FloatArray>
+        lateinit var fieldColorModifers: Array<Array<Array<Array<FloatArray>>>>
 
         fun pointIsInside(x: Int, y: Int, z: Int) = x >= 0 && y >= 0 && z >= 0 && x < width && y < length //&& z < depth
         fun pointIsCollide(x: Int, y: Int, z: Int) = if (z < depth) field[x][y][z] else false
@@ -218,10 +217,18 @@ object Application {
                         field[i][j][k] = field[i][j][k+1]
         }
         fun fieldReset() {
-            for (i in 0 until width)
-                for (j in 0 until length)
-                    for (k in 0 until depth)
-                        field[i][j][k] = false
+            fieldUnit = 0.98f/maxOf(width, length, depth).toFloat()
+            cornerX = 0.0f - ((fieldUnit * width.toFloat()) / 2.0f)
+            cornerY = 0.0f - ((fieldUnit * length.toFloat()) / 2.0f)
+            cornerZ = -1.0f
+            field = Array(width) { Array(length) { BooleanArray(depth) { false } } }
+            fieldColors = Array(depth) { floatArrayOf( Random.nextFloat(), Random.nextFloat(), Random.nextFloat()) }
+            fieldColorModifers = Array(width) { Array(length) { Array(depth) { Array(8)
+            { floatArrayOf((Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f, (Random.nextFloat()-0.5f)/3.0f) } } } }
+        }
+
+        init {
+            fieldReset()
         }
 
         lateinit var vertices: FloatArray
@@ -408,10 +415,11 @@ object Application {
             )
         )
 
-        var current = TetrominoType[0]
-        var locationX: Int = Field.width / 2
-        var locationY: Int = Field.length / 2
-        var locationZ: Int = Field.depth - 1
+        lateinit var current: List<TetrominoSegment>
+        var locationX: Int = 0
+        var locationY: Int = 0
+        var locationZ: Int = 0
+        var rotationMatrix = FloatArray(16)
 
         fun reset() {
             locationX = Field.width / 2
@@ -422,11 +430,10 @@ object Application {
             if (!isLocationRotationValid()) Field.fieldReset();
         }
 
-
-        var rotationMatrix = FloatArray(16)
         init {
-            Matrix.setIdentityM(rotationMatrix, 0)
+            reset()
         }
+
 
         fun rotateUp() {
             val oldMatrix = rotationMatrix.copyOf()
@@ -478,8 +485,6 @@ object Application {
                 reset()
             }
         }
-
-
 
         fun isLocationRotationValid(): Boolean {
             for (t in current) {
@@ -565,31 +570,22 @@ object Application {
                 "}"
 
 
-    // Use to access and set the view transformation
-    private var projMatrixIndex: Int = 0
-
-
-
-
-    // Set color with red, green, blue and alpha (opacity) values
     val tetrominoColor = floatArrayOf(1.0f, 0.0f, 1.0f, 1.0f)
     val backgroundLineColor = floatArrayOf(0.0f, 1.0f, 0.0f, 1.0f)
     val backgroundColor  = floatArrayOf(0.0f, 0.0f, 0.0f, 1.0f)
 
 
-
-
-    private var fieldShader: Int = loadShader(vertexShaderCode, fragmentShaderCode)
-    private var lineShader: Int = loadShader(lineVertexShaderCode, lineFragmentShaderCode)
+    var fieldShader: Int = loadShader(vertexShaderCode, fragmentShaderCode)
+    var lineShader: Int = loadShader(lineVertexShaderCode, lineFragmentShaderCode)
 
     var positionIndex: Int = 0
     var colorIndex: Int = 0
+    var projMatrixIndex: Int = 0
 
-    //val vertexCount: Int = triangleCoords.size / COORDS_PER_VERTEX
-    val vertexStride: Int = 3 * 4 // 4 bytes per vertex
-    val colorVertexStride: Int = 4 * 4 // 4 bytes per vertex
+    val vertexStride: Int = 3 * 4
+    val colorVertexStride: Int = 4 * 4
 
-    fun draw(mprojMatrix: FloatArray) {
+    fun draw(projMatrix: FloatArray) {
         Log.d("AAA", "Starting the draw")
         Field.assembleVertexArrays()
         Field.assembleBackgroundLines()
@@ -641,13 +637,14 @@ object Application {
         Log.d("AAA", "Done making buffers")
 
 
+        // zīmēt lauciņa kastes
         GLES30.glUseProgram(fieldShader)
 
         positionIndex = GLES30.glGetAttribLocation(fieldShader, "vertPosition")
         GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
             positionIndex,
-            3,
+            3, // xyz koordināes
             GLES30.GL_FLOAT,
             false,
             vertexStride,
@@ -668,7 +665,7 @@ object Application {
 
 
         projMatrixIndex = GLES30.glGetUniformLocation(fieldShader, "projMatrix")
-        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, projMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, triangles.size / 3)
 
@@ -678,14 +675,14 @@ object Application {
 
 
 
-
+        // zīmēt laukuma fonu
         GLES30.glUseProgram(lineShader)
 
         positionIndex = GLES30.glGetAttribLocation(lineShader, "vertPosition")
         GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
             positionIndex,
-            3,
+            3, // xyz koordināes
             GLES30.GL_FLOAT,
             false,
             vertexStride,
@@ -697,20 +694,20 @@ object Application {
 
 
         projMatrixIndex = GLES30.glGetUniformLocation(lineShader, "projMatrix")
-        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, projMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, backgroundLines.size / 3)
 
         GLES30.glDisableVertexAttribArray(positionIndex)
 
 
-
+        // zīmēt liekamo kauliņu
         GLES30.glDisable( GLES30.GL_DEPTH_TEST );
         positionIndex = GLES30.glGetAttribLocation(lineShader, "vertPosition")
         GLES30.glEnableVertexAttribArray(positionIndex)
         GLES30.glVertexAttribPointer(
             positionIndex,
-            3,
+            3, // xyz koordināes
             GLES30.GL_FLOAT,
             false,
             vertexStride,
@@ -722,7 +719,7 @@ object Application {
 
 
         projMatrixIndex = GLES30.glGetUniformLocation(lineShader, "projMatrix")
-        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, mprojMatrix, 0)
+        GLES30.glUniformMatrix4fv(projMatrixIndex, 1, false, projMatrix, 0)
 
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, lines.size / 3)
 
